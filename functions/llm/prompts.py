@@ -1,14 +1,41 @@
 # functions/llm/prompts.py
 """
-Intent:
-- Load prompt templates from configs/prompts.yaml.
-- Render templates with variables (course name, CLO list, skill lists, etc.).
-- Keep rendering deterministic (no random ordering).
-- HARDEN against Unicode whitespace (NBSP) in YAML block scalars.
+Prompt Templates (YAML) — Loading + Deterministic Rendering
 
-External calls:
-- functions.utils.config.load_prompts
-- Python stdlib str.format (default is simple format)
+Intent
+- Load prompt templates from `configs/prompts.yaml` and render them with runtime variables.
+- Keep prompt rendering deterministic and reproducible across runs.
+- Harden prompt text against problematic Unicode whitespace (e.g., NBSP) that can silently
+  break YAML block scalars or indentation when prompts are edited in tools like Word/Notion.
+
+What this module guarantees
+- **Safe prompt loading:** every template loaded from YAML is sanitized to replace common
+  non-ASCII whitespace characters with regular spaces and normalize CRLF → LF.
+- **Deterministic rendering:** rendering uses `str.format(**variables)` and expects callers to
+  inject pre-serialized JSON (preferably with stable key ordering).
+- **Clear failures:** missing template variables raise a `KeyError` that explicitly names the
+  missing placeholder.
+
+Primary functions
+- `load_prompt_templates(path="configs/prompts.yaml") -> Dict[str, str]`
+  Loads templates via `functions.utils.config.load_prompts()` and sanitizes each template.
+
+- `render_prompt(template: str, variables: Dict[str, Any]) -> str`
+  Renders templates using `str.format`. Raises a clear error for missing variables.
+
+- `build_variables_for_common_enums(params) -> Dict[str, str]`
+  Convenience helper to convert common parameter enum lists into stable JSON strings.
+
+Notes & usage conventions
+- Prefer injecting structured objects as JSON strings created with stable serialization:
+  - `json.dumps(obj, ensure_ascii=False, sort_keys=True)`
+  This avoids non-deterministic ordering and reduces diff noise in cached runs.
+- Sanitization is intentionally conservative: it only normalizes whitespace known to cause
+  YAML/indentation issues; it does not attempt to “fix” prompt content beyond that.
+
+External dependencies
+- `functions.utils.config.load_prompts`
+- Python stdlib: `json`, `str.format`
 """
 
 from __future__ import annotations

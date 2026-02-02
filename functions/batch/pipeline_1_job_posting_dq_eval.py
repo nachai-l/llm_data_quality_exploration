@@ -1,18 +1,70 @@
 # functions/batch/pipeline_1_job_posting_dq_eval.py
 """
-Job Posting DQ Evaluation (Batch LLM) + CSV Report
+Pipeline 1 — Job Posting Data Quality Evaluation (Batch LLM) + Fixed-Schema Report
 
-Outputs:
-  1) JSONL: raw per-record LLM output + ID/URL (traceability)
-  2) CSV: flattened report with a FIXED / STABLE schema (for Pipeline 2)
+Intent
+- Evaluate the quality and consistency of Lightcast job posting fields by comparing
+  structured fields against raw evidence (BODY, TITLE_RAW, COMPANY_RAW) using Gemini.
+- Produce a deterministic, downstream-friendly CSV report with a **fixed schema**
+  that Pipeline 2 can aggregate without schema drift.
 
-Key guarantees (IMPORTANT):
-- Output CSV schema is fixed (no `in__*`, no surprise columns).
-- LLM extra keys are ignored (e.g., POST_DATE, ISCED_LEVEL_NAME, etc).
-- All expected fields are always present in CSV (missing -> blank).
-- For each evaluated field, we write:
-    <FIELD>, <FIELD>__status, <FIELD>__reason
-- body_skills is stored as a JSON string list (no __status/__reason).
+Inputs
+- Raw Lightcast exports (CSV):
+  - raw_data/Thailand_global_postings.csv
+  - raw_data/Thailand_global_raw.csv
+  - raw_data/Thailand_global_skills.csv (optional; cleaned but not used further here)
+- Parameters:
+  - configs/parameters.yaml (runtime + model + outputs + concurrency)
+  - configs/credentials.yaml (non-secret client config; API key comes from ENV)
+
+Preprocessing (deterministic, non-LLM)
+1) Clean CSV → PSV (robust handling of quoted multiline / escaped artifacts)
+2) Robust whitespace normalization across string columns
+3) Merge raw_jds + postings (RIGHT join on ID)
+4) Select a stable subset of columns used for evaluation
+
+LLM Evaluation
+- For each record, call `run_prompt_json()` using `prompt_key` (default: job_posting_dq_eval_v1).
+- Uses per-record caching (`cache_id = "{ID}__{prompt_key}"`) to avoid repeat calls.
+- Supports concurrency via ThreadPoolExecutor (configurable `llm.max_workers`).
+- Thread-local Gemini client is used to avoid cross-thread reuse issues.
+
+Outputs (Artifacts)
+1) JSONL (traceability): `artifacts/reports/job_postings_dq_eval.jsonl`
+   - Contains the filtered LLM output + ID (+ URL when present)
+   - Keeps the per-record result for auditing and debugging
+
+2) CSV (fixed schema): `artifacts/reports/job_postings_dq_eval.csv`
+   - **Stable column order and column set** (no dynamic `in__*`, no surprise columns)
+   - For each evaluated field F:
+       - F (raw "Status | reason" string from LLM)
+       - F__status (parsed status)
+       - F__reason (parsed reason)
+   - Special handling:
+       - body_readability and record_validity behave like normal fields (status/reason)
+       - body_skills is stored as a JSON string list (no __status/__reason)
+
+Key Guarantees (IMPORTANT)
+- The output CSV schema is always identical across runs:
+  - Missing fields are emitted as blank strings
+  - Extra LLM keys are ignored (e.g., POST_DATE, ISCED_LEVEL_NAME, etc.)
+- Ordering is deterministic:
+  - Outputs are sorted by ID before writing JSONL and CSV
+- Pipeline 2 compatibility:
+  - Pipeline 2 can rely on `EVAL_FIELDS_IN_ORDER` + fixed columns without defensive logic
+
+CLI Usage
+- Run default:
+    python -m functions.batch.pipeline_1_job_posting_dq_eval
+- With overrides:
+    python -m functions.batch.pipeline_1_job_posting_dq_eval --max-rows 500 --force
+    python -m functions.batch.pipeline_1_job_posting_dq_eval --prompt-key job_posting_dq_eval_v2
+
+Notes / Assumptions
+- Secrets are NOT stored in repo. Set ENV:
+    export GEMINI_API_KEY="..."
+- If `llm.model_name` is set in parameters.yaml, it is mapped into GEMINI_MODEL
+  unless GEMINI_MODEL is already present in the environment.
 """
 
 from __future__ import annotations

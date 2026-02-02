@@ -1,3 +1,29 @@
+# functions/core/processing.py
+"""
+functions.core.processing
+
+Intent
+- Deterministic, LLM-agnostic data processing utilities used across the Lightcast
+  Data Quality exploration pipelines.
+
+What’s inside
+- clean_string_columns_robust():
+    Normalize whitespace across string columns (newlines/tabs/unicode spaces),
+    collapse repeated whitespace, and return per-column uniqueness reduction stats.
+- row_to_json(), row_to_json_by_id():
+    Extract a single record as JSON for debugging/traceability (row index or ID lookup),
+    with optional null-handling and column exclusion.
+
+Design principles
+- Pure pandas + stdlib (no external services).
+- Debug-first: human-readable outputs and safe defaults.
+- Reproducible: deterministic transforms and explicit knobs.
+
+Typical usage
+- Pre-clean raw/structured Lightcast fields before comparisons.
+- Quickly inspect a problematic JD record by ID when investigating DQ failures.
+"""
+
 import pandas as pd
 import json
 import re

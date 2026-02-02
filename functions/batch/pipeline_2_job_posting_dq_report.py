@@ -1,64 +1,81 @@
 # functions/batch/pipeline_2_job_posting_dq_report.py
 """
-Intent (Pipeline 2):
-- Read Pipeline 1 output CSV (row-level DQ evaluations).
-- Aggregate into a human-readable report + summary CSV tables.
+Pipeline 2 — Job Posting DQ Report (Deterministic Aggregation)
 
-Key rules (IMPORTANT):
-- Aggregation ALWAYS uses <FIELD>__status
-- Any text after " | " is ignored for aggregation
-- If Pipeline 1 did NOT write __status columns (only raw "<Status> | <reason>" strings),
-  this pipeline will auto-create __status columns for evaluable fields.
+Intent
+- Read Pipeline 1 output CSV (row-level LLM DQ evaluations with fixed schema).
+- Aggregate per-field and overall quality metrics into stakeholder-readable artifacts:
+  summary CSVs + Markdown/HTML report.
 
-Outputs (default):
+Core Rules (IMPORTANT)
+- Aggregation ALWAYS uses `<FIELD>__status`.
+- Anything after `" | "` is ignored for aggregation (status token only).
+- Backward compatibility:
+  - If Pipeline 1 did NOT output `__status` columns (only raw `"Status | reason"` strings),
+    this pipeline will auto-create `__status` columns using a coverage heuristic.
+  - Special fields also normalized:
+    - `record_validity__status` and `body_readability__status` are derived when missing.
+
+Inputs
+- artifacts/reports/job_postings_dq_eval.csv (Pipeline 1)
+
+Outputs (default)
+Reports
 - artifacts/reports/job_posting_dq_report.md
 - artifacts/reports/job_posting_dq_report.html
+
+Core summary tables
 - artifacts/reports/job_posting_dq_field_summary.csv
 - artifacts/reports/job_posting_dq_overall_summary.csv
 - artifacts/reports/job_posting_dq_body_skills_top.csv
 
-Added (P0 useful outputs):
-- Input completeness summary (structured inputs; prefers `in__*` columns, falls back to canonical input cols):
+P0 additions (high utility)
+- Input completeness (structured input availability)
   - artifacts/reports/job_posting_input_completeness.csv
-- Top reasons for problem fields (Unmatch + Unsure):
+  - Prefers `in__*` columns (Option B style); falls back to canonical input columns.
+- Top problem reasons (Unmatch + Unsure)
   - artifacts/reports/job_posting_dq_top_reasons.csv
 
-Added (P1-P2 report enhancements: 1-4):
-1) Field Reliability Scores:
-   - reliability_score = 1 - (unmatch_rate + unsure_rate)
+Enhancements (P1–P2)
+1) Field reliability scores
+   - reliability_score        = 1 - (unmatch_rate + unsure_rate)
    - reliability_score_strict = 1 - (unmatch_rate + unsure_rate + nodata_rate)
    - artifacts/reports/job_posting_dq_field_reliability.csv
-   - Top/Bottom fields table in report
 
-2) Field Failure Mode Split:
-   - Explicit table emphasizing unmatch/unsure/nodata rates (in report)
+2) Failure mode split (report section)
+   - Explicit unmatch/unsure/nodata rates per field in Markdown/HTML report.
 
-3) NoData dominance (root cause lens):
+3) NoData dominance lens
    - nodata_dominance = nodata_rate / (unmatch_rate + unsure_rate + nodata_rate)
    - artifacts/reports/job_posting_dq_field_nodata_dominance.csv
-   - Top fields dominated by NoData in report
 
-4) Per-record problem density:
-   - Count of problematic fields per record (Unmatch + Unsure) + rate
-   - Distribution summary (bins) in report
+4) Per-record problem density (record health)
+   - problem_fields_count = #fields with {Unmatch, Unsure}
+   - problem_fields_rate  = problem_fields_count / #fields with __status
    - artifacts/reports/job_posting_dq_record_health.csv
    - artifacts/reports/job_posting_dq_record_health_distribution.csv
 
-Added (New: Body skill count + Title usability):
-5) BODY skill count per JD:
-   - Per-record count: artifacts/reports/job_posting_dq_body_skill_count_per_record.csv
-   - Summary stats:   artifacts/reports/job_posting_dq_body_skill_count_summary.csv
-   - Distribution:   artifacts/reports/job_posting_dq_body_skill_count_distribution.csv
-   - Section in report
+5) BODY skill count per JD
+   - Per record:  artifacts/reports/job_posting_dq_body_skill_count_per_record.csv
+   - Summary:     artifacts/reports/job_posting_dq_body_skill_count_summary.csv
+   - Distribution:artifacts/reports/job_posting_dq_body_skill_count_distribution.csv
 
-6) Title usability (TITLE_NAME vs fallback TITLE_RAW):
+6) Title usability (TITLE_NAME vs fallback TITLE_RAW)
    - Table: artifacts/reports/job_posting_dq_title_usability.csv
-   - Recommendation: "Use TITLE_NAME if TITLE_NAME__status == Match else fallback to TITLE_RAW"
-   - Section in report
+   - Recommendation:
+     "Use TITLE_NAME if TITLE_NAME__status == Match else fallback to TITLE_RAW"
 
-Notes:
-- This pipeline is deterministic and does not call any LLM.
+Determinism / Non-LLM Guarantee
+- This pipeline does not call any LLM.
+- Given the same input CSV, outputs are deterministic.
+
+CLI
+- Default:
+    python -m functions.batch.pipeline_2_job_posting_dq_report
+- With overrides:
+    python -m functions.batch.pipeline_2_job_posting_dq_report --input-csv ... --top-n-fields 50
 """
+
 
 from __future__ import annotations
 

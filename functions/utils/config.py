@@ -1,23 +1,85 @@
 # functions/utils/config.py
 """
-Intent (Job Posting DQ project):
-- Load and validate YAML configuration files:
-  - configs/parameters.yaml
-  - configs/prompt.yaml (single system prompt string) OR configs/prompts.yaml (optional legacy)
-  - configs/credentials.yaml
-- Provide typed config objects (Pydantic) that match THIS repo (job posting DQ), not the old CLO project.
-- Keep compatibility helpers:
-  - Accept llm.max_rows_per_run as int or "all"
-  - Keep silence_client_lv_logs, max_workers, json_only, max_retries
-  - Ensure output/cache dirs exist
+Config Loader — Job Posting DQ Project (Typed YAML Configs)
 
-Primary functions:
-- load_parameters(path: str) -> ParametersConfig
-- load_prompt(path: str) -> str
-- load_prompts(path: str) -> dict[str, str]        (optional legacy support)
-- load_credentials(path: str) -> CredentialsConfig
-- ensure_dirs(params: ParametersConfig) -> None
+Intent
+- Load + validate YAML configuration files for the Job Posting DQ project:
+  - configs/parameters.yaml
+  - configs/prompt.yaml (single system prompt string; supports key variants)
+  - configs/prompts.yaml (optional legacy prompt-key map for runner)
+  - configs/credentials.yaml
+- Return **typed** configuration objects (Pydantic) aligned with this repo.
+- Provide backward-compatible parsing for a small set of legacy keys.
+- Ensure output/cache/report directories exist.
+
+What this module guarantees
+- **Strict validation:** invalid configs fail fast with actionable Pydantic errors.
+- **Unicode whitespace hardening:** NBSP/BOM/narrow NBSP are normalized before YAML parsing.
+- **Backwards compatibility (limited, intentional):**
+  - `input` -> `inputs` remap (singular -> plural)
+  - `llm.max_rows_per_run` accepts: null / "all" / int / numeric string
+- **Deterministic defaults:** if a key is omitted, model defaults apply.
+
+Config models (high level)
+- ProjectConfig:
+  - name (default "job_posting_dq")
+  - timezone (default "Asia/Bangkok")
+
+- InputsConfig:
+  - raw_postings_csv, raw_jds_csv, raw_skills_csv
+  - processed_postings_psv, processed_raw_psv, processed_skills_psv
+
+- LLMConfig:
+  - model_name (default "gemini-2.5-flash")
+  - temperature (0.0–2.0)
+  - progress_log_every (>0)
+  - max_workers (>0)
+  - silence_client_lv_logs (bool)
+  - json_only (bool), max_retries (>0)
+  - max_rows_per_run (Optional[int], supports "all" and <=0 => run all)
+  - force (bool)
+
+- OutputsConfig:
+  - artifacts_dir, cache_dir, reports_dir
+  - pipeline outputs paths (jsonl/csv)
+
+- ParametersConfig:
+  - groups: project, inputs, llm, outputs
+  - prompt_key (default "job_posting_dq_eval_v1")
+
+Credentials models
+- CredentialsGeminiRequest: timeout and retry backoff knobs
+- CredentialsGemini: api_key_env + optional project/location + request block
+- CredentialsConfig: gemini section
+
+Primary functions
+- load_parameters(path="configs/parameters.yaml") -> ParametersConfig
+- load_prompt(path="configs/prompt.yaml") -> str
+  - expects YAML key: "System Prompt" (preferred) or "system_prompt"
+  - NOTE: docstring mentions a typo "configs/prmpt.yaml" — code expects "configs/prompt.yaml"
+- load_prompts(path="configs/prompts.yaml") -> dict[str, str]
+  - expects structure:
+      meta: {...}
+      prompts: {prompt_key: "template", ...}
+- load_credentials(path="configs/credentials.yaml") -> CredentialsConfig
+- ensure_dirs(params) -> None
+  - creates: artifacts_dir, cache_dir, reports_dir, plus process_data/raw_data
+
+Implementation notes / gotchas
+- `_load_yaml()` enforces that YAML root is a mapping/object; otherwise raises.
+- `load_prompts()` is “legacy”: it requires `meta` and `prompts` mappings (strict).
+- `OutputsConfig` default output paths currently use:
+  - "artifacts/job_postings_dq_eval.jsonl"
+  - "artifacts/job_postings_dq_eval.csv"
+  but Pipeline 1 defaults mention `artifacts/reports/...` — make sure these are aligned
+  (either adjust defaults here or in the pipeline’s output resolution logic).
+
+External dependencies
+- PyYAML: yaml.safe_load
+- Pydantic v2: BaseModel, validators, model_validate
+- Local: functions.utils.logging.get_logger
 """
+
 
 from __future__ import annotations
 

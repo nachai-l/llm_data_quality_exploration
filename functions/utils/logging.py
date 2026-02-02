@@ -1,24 +1,47 @@
 # functions/utils/logging.py
 """
-Intent:
-- Provide structured, consistent logging across all pipelines.
-- Support run_id correlation and optional log-to-file.
-- Optionally silence noisy client-level logs (e.g., httpx / google_genai) via params.llm.silence_client_lv_logs.
+Logging Utilities — Consistent, Structured Logs + Optional Client Silencing
 
-Implementation notes:
-- Some third-party libs reset their logger levels after our configuration or attach their own handlers.
-  Therefore, we apply BOTH:
-  (1) best-effort per-logger level/propagation controls, and
-  (2) a handler-level filter (robust), plus
-  (3) a root-logger filter (extra safety when bubbling happens).
+Intent
+- Provide consistent logging across all pipelines/modules with a single configuration entrypoint.
+- Support correlation via `run_id` (injected into LogRecord).
+- Optionally reduce noise from verbose third-party client libraries (e.g., HTTP stacks, google genai SDK)
+  using a *belt-and-suspenders* strategy: logger disabling + handler filters + root filter.
 
-External calls:
-- Python stdlib logging
+What this module guarantees
+- **Idempotent root configuration:** `configure_logging()` avoids duplicating handlers across repeated calls.
+- **Stable log format:** timestamps + level + logger name + message (and optional run_id in record).
+- **Optional log-to-file:** add a FileHandler without breaking stream logging.
+- **Robust client log silencing (when enabled):**
+  - Disables noisy logger namespaces (prevents emission even if libraries attach handlers/reset levels),
+  - Installs handler-level filters on root handlers (backstop),
+  - Installs a root-logger filter (extra safety when propagation behaves unexpectedly).
 
-Primary functions:
-- get_logger(name: str, run_id: str | None = None) -> logging.Logger
-- configure_logging(level: str, log_file: str | None = None, silence_client_lv_logs: bool = False) -> None
+Key concepts
+- Root handlers carry formatting and filtering (modules should not attach handlers).
+- `RunIdFilter` injects `record.run_id` for correlation (pipelines can attach per logger).
+- `NoisyLibFilter` drops INFO/DEBUG logs for known noisy namespaces while always allowing WARNING+.
+
+Primary API
+- `configure_logging(level="INFO", log_file=None, silence_client_lv_logs=False) -> None`
+  Configures root logging once and can be safely re-called to:
+  - add a file handler
+  - toggle client log silencing
+  - refresh filters on newly added handlers
+
+- `get_logger(name: str, run_id: str | None = None) -> logging.Logger`
+  Returns a module logger and (optionally) attaches a `RunIdFilter` for correlation.
+  Lazily configures logging with defaults if not configured yet.
+
+Operational notes
+- `_NOISY_PREFIXES` is intentionally conservative; only add namespaces that are consistently noisy.
+- When `silence_client_lv_logs=True`, noisy loggers are disabled and their handlers removed.
+  Filters remain installed as a safety net for newly created child loggers.
+
+External dependencies
+- Python stdlib: `logging`, `pathlib`
 """
+
 
 from __future__ import annotations
 

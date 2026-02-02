@@ -1,3 +1,42 @@
+# functions/core/ingestions.py
+"""
+functions.core.ingestions.py
+
+CSV → PSV Cleaning Utility (Pandas-based)
+
+Intent
+- Normalize and sanitize raw Lightcast-style CSV extracts that contain
+  escaped characters, multiline fields, and inconsistent null tokens.
+- Convert the cleaned result into a pipe-separated (PSV) format suitable
+  for downstream ingestion, diffing, or large-scale processing.
+
+What this function does
+- Reads CSV safely:
+  - Handles quoted, multi-line fields
+  - Skips malformed rows instead of failing the pipeline
+- Field-level normalization:
+  - Cleans ISCED_LEVELS_NAME by removing brackets, quotes, escapes, and newlines
+  - Normalizes all columns by:
+    - Unescaping commas
+    - Removing stray backslashes
+    - Flattening newlines/carriage returns
+    - Stripping surrounding whitespace
+    - Converting common null tokens ([None], nan, NaN) to empty strings
+- Writes a deterministic PSV output (QUOTE_NONE, `|` separator)
+
+Design principles
+- Deterministic and non-LLM: safe for batch preprocessing and CI runs
+- Loss-minimizing: skips only irrecoverably malformed rows
+- Pandas-only implementation for portability and transparency
+- Returns the cleaned DataFrame for optional in-memory reuse
+
+Typical usage
+- Pre-clean raw job posting exports before:
+  - LLM-based data quality validation
+  - Schema enforcement
+  - Bulk loading into analytics databases
+"""
+
 import pandas as pd
 import re
 

@@ -1,33 +1,48 @@
 # functions/llm/runner.py
 """
-Intent:
-- Single high-level interface: given prompt_key + variables + expected schema,
-  call Gemini and return validated JSON.
-- Enforce JSON-only outputs with:
+Gemini Prompt Runner (JSON-only + Schema Validation + Cache)
+
+Intent
+- Provide one high-level entrypoint to run a prompt by `prompt_key` with variables,
+  call Gemini, and return **validated JSON** as a Pydantic model.
+- Make LLM execution predictable and pipeline-friendly by enforcing:
+  - JSON extraction (even if the model adds fences or trailing text)
   - schema validation (Pydantic)
-  - retry loop with corrective instruction
-  - optional caching (read-before-call, write-after-call) using explicit cache_id
-- Support cache bypass via `force=True`, and add cache visibility logs (HIT/MISS/FORCE/STALE).
+  - bounded retries with corrective instructions
+  - deterministic, caller-supplied caching via `cache_id`
+  - optional failure dumps for debugging
 
-External calls:
-- functions.llm.prompts.load_prompt_templates()
-- functions.llm.prompts.render_prompt()
-- Pydantic models from schema.schemas
+What this module guarantees
+- **Return type safety:** `run_prompt_json()` returns a `BaseModel` instance validated
+  against the provided `schema_model`.
+- **JSON-only enforcement:** model output is parsed to the first JSON object/array;
+  markdown/code fences and trailing junk are ignored.
+- **Stable caching semantics:**
+  - HIT: cached payload exists and validates against schema
+  - STALE: cached payload exists but fails schema validation → re-call Gemini
+  - MISS: no cache file found
+  - FORCE: cache read bypassed via `force=True`
+- **Debuggability:** if enabled, invalid model outputs are saved under
+  `artifacts/cache/_failures/` so you can inspect failures without re-running.
 
-Primary functions:
-- run_prompt_json(
-    prompt_key,
-    variables,
-    schema_model,
-    client_ctx,
-    temperature,
-    max_retries,
-    json_only,
-    cache_dir,
-    cache_id,
-    force,
-    write_cache,
-  ) -> BaseModel
+Dependencies
+- Prompt rendering:
+  - `functions.llm.prompts.load_prompt_templates()`
+  - `functions.llm.prompts.render_prompt()`
+- Validation:
+  - Pydantic `BaseModel` / `ValidationError`
+- Gemini SDK:
+  - `client.models.generate_content(...)` (via `google.genai` client instance passed in)
+
+Key functions
+- `run_prompt_json(...) -> BaseModel`
+  Renders prompt from `configs/prompts.yaml`, runs Gemini, extracts JSON,
+  validates the payload, and optionally caches the validated payload.
+
+Supporting utilities (internal)
+- `_extract_json(text)`: strip fences and decode the first JSON value
+- `_auto cache`: `_try_read_cache()` / `_write_cache()` with filesystem-safe cache ids
+- `_write_failure_dump()`: best-effort raw output dump for invalid attempts
 """
 
 from __future__ import annotations

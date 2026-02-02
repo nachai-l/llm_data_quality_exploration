@@ -1,20 +1,44 @@
 # functions/llm/client.py
 """
-Intent:
-- Initialize and configure Gemini client using the supported `google.genai` package.
-- Central place for:
-  - model selection
-  - auth via environment variables (.env)
-  - client construction (no network calls)
+Gemini Client Factory (`google.genai`)
 
-External calls:
-- from google import genai
-- os.environ for API keys
-- functions.utils.logging.get_logger
+Intent
+- Construct a Gemini client context in a single, reusable place.
+- Standardize how this project resolves:
+  - model name selection
+  - authentication (API key via environment variable)
+  - config inputs (supports dicts and typed config objects)
 
-Primary functions:
-- build_gemini_client(credentials_config, model_name_override=None) -> dict
-- get_model_name(credentials_config, model_name_override=None) -> str
+Design Principles
+- **No network calls** are performed here. This module only prepares a client context
+  that downstream code can use to make requests.
+- **Secrets are never read from files**. The API key must come from an environment
+  variable (e.g., `GEMINI_API_KEY`), whose name is provided by `credentials.yaml`.
+
+Configuration Inputs
+- `credentials_config` may be:
+  1) a full credentials object with `.gemini`
+  2) an object/dict already representing the `gemini` section
+  3) a dict like `{"gemini": {...}}`
+
+Model Name Resolution (priority order)
+1) `model_name_override` (typically provided by `parameters.yaml`)
+2) `credentials_config.gemini.model_name` (if present)
+3) environment variable `GEMINI_MODEL`
+
+Primary API
+- `get_model_name(credentials_config, model_name_override=None) -> str`
+- `build_gemini_client(credentials_config, model_name_override=None) -> dict`
+    Returns:
+      {
+        "client": genai.Client,
+        "model_name": "<resolved model name>",
+      }
+
+Dependencies
+- `google.genai` (Gemini SDK)
+- `os.environ` for secret retrieval
+- `functions.utils.logging.get_logger` for optional logging
 """
 
 from __future__ import annotations

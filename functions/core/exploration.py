@@ -1,4 +1,26 @@
 # functions/core/exploration.py
+"""
+functions.core.exploration
+
+Intent
+- Provide deterministic, notebook-friendly exploratory utilities for quick profiling
+  of Lightcast job posting datasets before/alongside LLM-based validation.
+
+What’s inside
+- analyze_missing_data_detailed():
+    Column-wise missingness breakdown that treats multiple “missing-like” tokens
+    separately (NaN/None, empty string, 'Unclassified'), prints a readable summary,
+    and returns a sortable DataFrame of counts and rates.
+- analyze_top_values_table():
+    Per-column frequency inspection (top-N + “Others”) with readability-focused
+    console output, optional column exclusion, and value truncation for long text.
+
+Design principles
+- Pure pandas + stdlib; no LLM calls, no side effects beyond console prints.
+- Debug-first output for fast iteration in notebooks and local runs.
+- Return structured objects (DataFrame/dict) so results can be reused downstream.
+"""
+
 import pandas as pd
 
 def analyze_missing_data_detailed(df):

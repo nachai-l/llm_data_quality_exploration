@@ -1,21 +1,64 @@
+# functions/io/writers.py
 """
-Intent:
-- Write pipeline artifacts deterministically:
-  - jsonl (course bundles, skill sets, alignments)
-  - csv (metrics)
-  - report files (md/html) delegated to core.reporting
+Writers (Deterministic Artifacts I/O)
 
-External calls:
+Intent
+- Provide a single, deterministic way to write pipeline outputs to disk.
+- Standardize how artifacts are persisted across pipelines:
+  - JSONL for record-level outputs (LLM results, bundles, traceability)
+  - CSV for tabular metrics and reports
+- Centralize directory creation and logging for all write operations.
+
+External calls
+- json.dumps
 - pandas.DataFrame.to_csv
-- json (json.dumps)
-- pathlib
+- pathlib.Path
 - functions.utils.logging.get_logger
 
-Primary functions:
-- write_jsonl(path, records: list[dict]) -> None
-- write_csv(path, df) -> None
+Primary functions
 - ensure_parent_dir(path) -> None
+- write_jsonl(path, records) -> None
+- write_csv(path, df) -> None
+
+Key behaviors / guarantees
+- **Deterministic output**
+  - JSONL:
+    - One JSON object per line
+    - UTF-8 encoding
+    - sort_keys=True to ensure stable key ordering
+    - ensure_ascii=False to preserve Thai / Unicode text
+  - CSV:
+    - UTF-8 encoding
+    - index=False
+    - Column order is exactly df.columns (caller-controlled)
+
+- **Filesystem safety**
+  - ensure_parent_dir() is called automatically before writing.
+  - Parent directories are created recursively and idempotently.
+  - Safe to call repeatedly across pipeline stages.
+
+- **Observability**
+  - All write operations emit INFO-level logs with:
+    - file path
+    - number of rows written
+    - number of columns (CSV)
+
+Design notes
+- Writers are intentionally *thin*:
+  - No schema enforcement
+  - No column mutation
+  - No validation logic
+- Schema correctness and ordering are responsibilities of upstream pipeline stages.
+- This module is reusable across:
+  - batch pipelines
+  - report generation
+  - intermediate debugging artifacts
+
+Typical usage
+- JSONL: write per-record LLM outputs for traceability and replay
+- CSV: write flattened, fixed-schema outputs for downstream pipelines
 """
+
 
 from __future__ import annotations
 
