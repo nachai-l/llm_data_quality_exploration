@@ -6,9 +6,9 @@ LLM-based data quality exploration and validation framework that evaluates struc
 
 ## Overview
 
-This project explores **real-world structured data quality** by validating each field against its original raw text source using **Large Language Models (LLMs)**.
+This project explores **real-world structured data quality** by validating each structured field against its original raw text source using **Large Language Models (LLMs)**.
 
-Instead of assuming structured fields are correct, the framework treats the raw text (e.g. job descriptions) as the source of truth and asks:
+Instead of assuming structured fields are correct, the framework treats raw text (e.g. job descriptions) as the source of truth and asks:
 
 - Does this structured field actually match the evidence?
 - Is the field missing, weakly inferred, or contradictory?
@@ -30,7 +30,7 @@ The result is a **diagnostic view of data trustworthiness**, not just completene
 - **Missingness dominance detection**
   - Identify fields failing primarily due to missing inputs
 - **Record-level health metrics**
-  - Problem density per record
+  - Problem density per record (Unmatch + Unsure)
 - **Title usability diagnostics**
   - Structured title vs raw title fallback recommendation
 - **LLM-extracted BODY skill analysis**
@@ -43,10 +43,11 @@ The result is a **diagnostic view of data trustworthiness**, not just completene
 ## Data Scope
 
 - Dataset: Job postings (Lightcast sample)
-- Sample size: ~20,000 records
+- Sample size: Configurable (typically up to ~20,000 records depending on access and filters)
 - Inputs:
-  - Raw job text (`BODY`, `TITLE_RAW`, `COMPANY_RAW`)
-  - Structured fields (title, salary, industry, occupation, location, etc.)
+  - Raw job text (`BODY`, `TITLE_RAW`, `COMPANY_RAW`, etc.)
+  - Structured fields (title, salary, industry, occupation, location, education, etc.)
+- Raw and structured sources are merged by record `ID`
 
 ---
 
@@ -71,7 +72,7 @@ Lightcast_data_exploration/
 ├── process_data/              # Processed intermediate data (ignored by git)
 │
 ├── artifacts/
-│   ├── cache/                 # LLM cache (ignored by git)
+│   ├── cache/                 # LLM response cache (+ failure dumps)
 │   └── reports/               # Generated CSV & report artifacts
 │
 ├── exploration.ipynb          # Interactive analysis notebook
@@ -86,20 +87,29 @@ Lightcast_data_exploration/
 ## Pipelines
 
 ### Pipeline 1 — LLM Field Validation
+
 - Compares structured fields against raw job text
-- Outputs per-field evaluation with explanations
-- Produces:
-  - `job_postings_dq_eval.csv`
-  - `job_postings_dq_eval.jsonl`
+- Produces per-field validation results with explanations
+- Enforces a **fixed, stable output schema**
+- Supports caching, retries, concurrency, and cache bypass (`--force`)
+
+**Outputs**
+- `artifacts/job_postings_dq_eval.csv`
+- `artifacts/job_postings_dq_eval.jsonl`
+
+---
 
 ### Pipeline 2 — Aggregated Quality Report
+
 - Aggregates Pipeline 1 outputs into analytical summaries
-- Produces:
-  - Overall quality metrics
-  - Field reliability tables
-  - Missingness dominance
-  - Record health distributions
-  - Skill frequency and density reports
+- Computes field-level and record-level quality diagnostics
+
+**Produces**
+- Overall quality metrics
+- Field reliability tables
+- Missingness dominance analysis
+- Record health distributions
+- BODY skill frequency and density reports
 
 ---
 
@@ -111,9 +121,9 @@ Lightcast_data_exploration/
 | Unmatch | Field contradicts raw text |
 | Unsure | Raw text does not provide explicit evidence |
 | NoData | Field missing or empty |
-| Reliability Score | 1 − (Unmatch + Unsure) |
-| Strict Reliability | Reliability penalized by NoData |
-| Problem Rate | Unmatch + Unsure + NoData |
+| Reliability Score | `1 − (unmatch_rate + unsure_rate)` |
+| Strict Reliability | `1 − (unmatch_rate + unsure_rate + nodata_rate)` |
+| Problem Rate | `unmatch_rate + unsure_rate` (excludes NoData) |
 
 ---
 
@@ -121,7 +131,7 @@ Lightcast_data_exploration/
 
 - Salary information is present in ~17% of postings → **high NoData dominance**
 - Title fields are highly reliable → **safe for direct use**
-- Industry and education fields often marked **Unsure** due to missing explicit mentions
+- Industry and education fields are often **Unsure** due to missing explicit mentions
 - Most records have **30–50% problematic fields**, indicating partial usability rather than binary quality
 
 ---
@@ -136,13 +146,22 @@ Lightcast_data_exploration/
 
 ---
 
+## Configuration Notes
+
+- `llm.max_rows_per_run`: limit rows per execution (`null` or `"all"` = full dataset)
+- `llm.max_workers`: concurrency for LLM calls
+- `--force`: bypass cache and re-run LLM evaluation
+- Cached LLM outputs are stored in `artifacts/cache/`
+- Invalid model outputs are dumped to `artifacts/cache/_failures/` for inspection
+
+---
+
 ## Requirements
 
 - Python 3.9+
 - pandas
 - PyYAML
-- tqdm
-- Google GenAI SDK (Gemini)
+- google-genai (Gemini SDK)
 
 Install dependencies:
 
@@ -157,5 +176,3 @@ pip install -r requirements.txt
 * Large raw datasets and credentials are intentionally excluded from version control.
 * This framework is dataset-agnostic and can be adapted beyond job postings.
 * Designed for **analysis, auditing, and decision support**, not model training.
-
-
