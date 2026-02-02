@@ -13,37 +13,48 @@ __pycache__/
 Thumbs.db
 
 # =========================
-# Credentials (DO NOT COMMIT)
+# Secrets (DO NOT COMMIT)
 # =========================
-configs/credentials.yaml
+.env
+.env.*
+configs/*secret*.yaml
+configs/*key*.yaml
 
 # =========================
-# Large / derived data
+# Data & Artifacts (structure kept, contents ignored)
 # =========================
 
-# Raw input data
-raw_data/
-process_data/
+# Raw / processed data (keep folder via .gitkeep)
+raw_data/*
+process_data/*
+!raw_data/.gitkeep
+!process_data/.gitkeep
 
-# Generated artifacts & caches
-artifacts/cache/
-artifacts/reports/
+# Generated artifacts
+artifacts/cache/*
+artifacts/reports/*
+!artifacts/cache/.gitkeep
+!artifacts/reports/.gitkeep
 
-# Large data files tracked outside Git
-*.csv
-*.psv
+# =========================
+# Generated large files (pipeline outputs)
+# =========================
 *.jsonl
+*.psv
+
+# CSVs are usually large outputs — ignore by default
+# (override explicitly if needed)
+*.csv
 
 # =========================
-# Allowlist (keep tracked)
+# Allowlist (explicitly tracked)
 # =========================
 
-# Configs that SHOULD be versioned
+# Versioned configs
 !configs/parameters.yaml
 !configs/prompts.yaml
+!configs/credentials.yaml
 
-# Keep requirements
+# Project essentials
 !requirements.txt
-
-# Keep notebooks
 !exploration.ipynb
