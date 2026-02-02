@@ -1,0 +1,49 @@
+# =========================
+# Jupyter / Python noise
+# =========================
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+__pycache__/
+*.py[cod]
+
+# =========================
+# OS / Editor
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Credentials (DO NOT COMMIT)
+# =========================
+configs/credentials.yaml
+
+# =========================
+# Large / derived data
+# =========================
+
+# Raw input data
+raw_data/
+process_data/
+
+# Generated artifacts & caches
+artifacts/cache/
+artifacts/reports/
+
+# Large data files tracked outside Git
+*.csv
+*.psv
+*.jsonl
+
+# =========================
+# Allowlist (keep tracked)
+# =========================
+
+# Configs that SHOULD be versioned
+!configs/parameters.yaml
+!configs/prompts.yaml
+
+# Keep requirements
+!requirements.txt
+
+# Keep notebooks
+!exploration.ipynb
